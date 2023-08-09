@@ -13,6 +13,12 @@ reset_sx1301_board ()
 
 	logger "lora_pkt_fwd: Reset SX1301 with pin ${pin}"
 
+	# Powerup LoRa Modem work for ZHW
+	echo 2 > /sys/class/gpio/export
+	echo out > /sys/class/gpio/gpio2/direction
+	echo 1 > /sys/class/gpio/gpio2/value
+
+
 	if [ -d "/sys/class/gpio/gpio${pin}" ]
 	then
 		echo 1 > /dev/null
