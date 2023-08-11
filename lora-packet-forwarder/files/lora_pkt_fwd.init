@@ -9,32 +9,30 @@ CONFIGFILE=/etc/global_conf.json
 
 reset_sx1301_board ()
 {
-	local pin=$1
+	export pin=$1
 
 	logger "lora_pkt_fwd: Reset SX1301 with pin ${pin}"
 
 	# Powerup LoRa Modem work for ZHW
-	echo 2 > /sys/class/gpio/export
+	if [ ! -d "/sys/class/gpio/gpio2" ]; then
+		echo 2 > /sys/class/gpio/export
+	fi
 	echo out > /sys/class/gpio/gpio2/direction
 	echo 1 > /sys/class/gpio/gpio2/value
 
-
-	if [ -d "/sys/class/gpio/gpio${pin}" ]
-	then
-		echo 1 > /dev/null
-	else
+	if [ ! -d "/sys/class/gpio/gpio${pin}" ]; then
 		echo ${pin} > /sys/class/gpio/export
-		echo "out" > /sys/class/gpio/gpio${pin}/direction
-		sleep 1
 	fi
+	echo out > /sys/class/gpio/gpio${pin}/direction
+	sleep 1
 
-	echo "1" > /sys/class/gpio/gpio${pin}/value
+	echo 1 > /sys/class/gpio/gpio${pin}/value
 	sleep 5
-	echo "0" > /sys/class/gpio/gpio${pin}/value
+	echo 0 > /sys/class/gpio/gpio${pin}/value
 	sleep 1
-	echo "0" > /sys/class/gpio/gpio${pin}/value
+	echo 0 > /sys/class/gpio/gpio${pin}/value
 	sleep 1
-	echo "in" > /sys/class/gpio/gpio${pin}/direction
+	echo in > /sys/class/gpio/gpio${pin}/direction
 	sleep 1
 
 	logger "lora_pkt_fwd: SX1301 reset completed"
