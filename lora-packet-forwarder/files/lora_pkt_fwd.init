@@ -13,13 +13,6 @@ reset_sx1301_board ()
 
 	logger "lora_pkt_fwd: Reset SX1301 with pin ${pin}"
 
-	# Powerup LoRa Modem work for ZHW
-	if [ ! -d "/sys/class/gpio/gpio2" ]; then
-		echo 2 > /sys/class/gpio/export
-	fi
-	echo out > /sys/class/gpio/gpio2/direction
-	echo 1 > /sys/class/gpio/gpio2/value
-
 	if [ ! -d "/sys/class/gpio/gpio${pin}" ]; then
 		echo ${pin} > /sys/class/gpio/export
 	fi
@@ -27,13 +20,11 @@ reset_sx1301_board ()
 	sleep 1
 
 	echo 1 > /sys/class/gpio/gpio${pin}/value
-	sleep 5
+	sleep 2
 	echo 0 > /sys/class/gpio/gpio${pin}/value
-	sleep 1
-	echo 0 > /sys/class/gpio/gpio${pin}/value
-	sleep 1
+	sleep 2
 	echo in > /sys/class/gpio/gpio${pin}/direction
-	sleep 1
+	sleep 2
 
 	logger "lora_pkt_fwd: SX1301 reset completed"
 }
@@ -49,6 +40,15 @@ start_service()
 	include /lib/functions
 
 	logger "lora_pkt_fwd: Start"
+
+	# Powerup LoRa Modem work for ZHW
+	if [ ! -d "/sys/class/gpio/gpio2" ]; then
+		echo 2 > /sys/class/gpio/export
+	fi
+	echo out > /sys/class/gpio/gpio2/direction
+	sleep 1
+	echo 1 > /sys/class/gpio/gpio2/value
+	sleep 5
 
 	config_load lora_pkt_fwd
 
