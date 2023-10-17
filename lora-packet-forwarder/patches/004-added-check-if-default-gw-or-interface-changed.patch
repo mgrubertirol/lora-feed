@@ -1,0 +1,127 @@
+diff -urN packet_forwarder-4.0.1-orig/lora_pkt_fwd/src/lora_pkt_fwd.c packet_forwarder-4.0.1/lora_pkt_fwd/src/lora_pkt_fwd.c
+--- packet_forwarder-4.0.1-orig/lora_pkt_fwd/src/lora_pkt_fwd.c	2023-12-06 12:52:56.174173914 +0100
++++ packet_forwarder-4.0.1/lora_pkt_fwd/src/lora_pkt_fwd.c	2023-12-06 12:51:44.684553246 +0100
+@@ -44,6 +44,8 @@
+ #include <netinet/in.h>     /* INET constants and stuff */
+ #include <arpa/inet.h>      /* IP address conversion stuff */
+ #include <netdb.h>          /* gai_strerror */
++#include <syslog.h>
++#include <string.h>
+ 
+ #include <pthread.h>
+ 
+@@ -1244,9 +1261,16 @@
+     sigaction(SIGTERM, &sigact, NULL); /* default "kill" command */
+ 
+     /* main loop task : statistics collection */
++    unsigned stat_interval_check = 0;
+     while (!exit_sig && !quit_sig) {
+         /* wait for next reporting interval */
+-        wait_ms(1000 * stat_interval);
++        wait_ms(1000);
++
++        if(stat_interval_check < stat_interval) {
++                stat_interval_check++;
++                continue;
++        }
++        stat_interval_check = 0;
+ 
+         /* get timestamp for statistics */
+         t = time(NULL);
+diff -urN packet_forwarder-4.0.1-orig/lora_pkt_fwd/src/timersync.c packet_forwarder-4.0.1/lora_pkt_fwd/src/timersync.c
+--- packet_forwarder-4.0.1-orig/lora_pkt_fwd/src/timersync.c	2023-12-06 12:49:16.165418812 +0100
++++ packet_forwarder-4.0.1/lora_pkt_fwd/src/timersync.c	2023-12-06 12:50:49.974608840 +0100
+@@ -21,6 +21,10 @@
+ #include <stdint.h>        /* C99 types */
+ #include <pthread.h>
+ 
++#include <string.h>
++#include <arpa/inet.h>
++#include <net/if.h>
++
+ #include "trace.h"
+ #include "timersync.h"
+ #include "loragw_hal.h"
+@@ -81,6 +85,37 @@
+     return 0;
+ }
+ 
++int getgatewayandiface(in_addr_t * addr, char *interface)
++{
++    long destination, gateway;
++    char iface[IF_NAMESIZE];
++    char buf[4096];
++    FILE * file;
++
++    memset(iface, 0, sizeof(iface));
++    memset(buf, 0, sizeof(buf));
++
++    file = fopen("/proc/net/route", "r");
++    if (!file)
++        return -1;
++
++    while (fgets(buf, sizeof(buf), file)) {
++        if (sscanf(buf, "%s %lx %lx", iface, &destination, &gateway) == 3) {
++            if (destination == 0) { /* default */
++                *addr = gateway;
++                strcpy(interface, iface);
++                fclose(file);
++                return 0;
++            }
++        }
++    }
++
++    /* default route not found */
++    if (file)
++        fclose(file);
++    return -1;
++}
++
+ /* ---------------------------------------------------------------------------------------------- */
+ /* --- THREAD 6: REGULARLAY MONITOR THE OFFSET BETWEEN UNIX CLOCK AND CONCENTRATOR CLOCK -------- */
+ 
+@@ -91,6 +126,19 @@
+     struct timeval offset_previous = {0,0};
+     struct timeval offset_drift = {0,0}; /* delta between current and previous offset */
+ 
++    in_addr_t addr = 0;
++    in_addr_t addr_save = 0;
++
++    char a1[IF_NAMESIZE];
++    char a2[IF_NAMESIZE];
++
++    char iface[IF_NAMESIZE];
++    char iface_save[IF_NAMESIZE];
++
++    memset(iface, 0, sizeof(iface));
++    memset(iface_save, 0, sizeof(iface_save));
++    getgatewayandiface(&addr_save, iface_save);
++
+     while (!exit_sig && !quit_sig) {
+         /* Regularly disable GPS mode of concentrator's counter, in order to get
+             real timer value for synchronizing with host's unix timer */
+@@ -135,6 +183,24 @@
+         lgw_reg_w(LGW_GPS_EN, 1);
+         pthread_mutex_unlock(&mx_concent);
+ 
++        /* check if gw or interface default route  changed */
++        getgatewayandiface(&addr, iface);
++
++        inet_ntop(AF_INET, &addr, a1, sizeof(a1));
++        inet_ntop(AF_INET, &addr_save, a2, sizeof(a2));
++
++        MSG("Gateway NOW : %s\n", a1);
++        MSG("Gateway SAVE: %s\n", a2);
++
++        MSG("Iface NOW : %s\n", iface);
++        MSG("Iface SAVE: %s\n", iface_save);
++
++        if((addr != addr_save) || (strcmp(iface, iface_save) != 0)) {
++            MSG("INFO: Exiting packet forwarder program, because of GW or interface change\n");
++            exit_sig = true;
++            break;
++        }
++
+         /* delay next sync */
+         /* If we consider a crystal oscillator precision of about 20ppm worst case, and a clock
+             running at 1MHz, this would mean 1µs drift every 50000µs (10000000/20).
