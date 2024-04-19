@@ -1,4 +1,4 @@
-cmake_minimum_required(VERSION 3.18.4)
+cmake_minimum_required(VERSION 3.15.1)
 project(basicstation)
 
 add_compile_definitions(CFG_linux)
